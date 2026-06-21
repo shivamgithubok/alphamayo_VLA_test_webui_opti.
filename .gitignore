@@ -4,11 +4,11 @@ __pycache__/
 *$py.class
 ar1_venv/
 # C extensions
-.md
+# .md
 *.so
 *.pt
 *json
-LICENSE
+# LICENSE
 # Distribution / packaging
 .Python
 build/

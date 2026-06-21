@@ -219,3 +219,13 @@ If you use Alpamayo 1 in your research, please cite:
 # alphamayo_VLA_v0
 # alphamayo_VLA_v0
 # alphamayo_VLA_test_webui_opti.
+
+
+--- This repository is based on NVIDIA Alpamayo.
+```
+Modifications:
+- Added support for single-camera inference
+- Added latency benchmarking
+- Added custom trajectory outputs
+- Added quantization experiments
+```
