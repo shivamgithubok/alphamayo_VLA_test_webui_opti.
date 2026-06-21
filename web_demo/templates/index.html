@@ -1,0 +1,1700 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alpamayo 1 — Live Inference</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* ── Reset & base ─────────────────────────────────────────── */
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: #000;
+            color: #fff;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* ── SETUP SCREEN (shown before video loaded) ──────────────── */
+        #setupScreen {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg, #09090e 0%, #13132a 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2rem;
+            z-index: 200;
+            transition: opacity 0.5s ease;
+        }
+
+        #setupScreen.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .setup-logo {
+            font-size: 2.4rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: linear-gradient(90deg, #a5b4fc, #6366f1, #38bdf8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .setup-sub {
+            color: rgba(255, 255, 255, 0.45);
+            font-size: 0.95rem;
+            margin-top: -1.2rem;
+            text-align: center;
+        }
+
+        .setup-card {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 2rem 2.5rem;
+            width: min(480px, 92vw);
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+        }
+
+        .upload-zone {
+            border: 2px dashed rgba(255, 255, 255, 0.12);
+            border-radius: 14px;
+            padding: 2rem 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .upload-zone:hover,
+        .upload-zone.dragover {
+            border-color: #6366f1;
+            background: rgba(99, 102, 241, 0.06);
+        }
+
+        .upload-zone svg {
+            width: 40px;
+            height: 40px;
+            stroke: rgba(255, 255, 255, 0.35);
+            transition: stroke 0.2s;
+        }
+
+        .upload-zone:hover svg {
+            stroke: #818cf8;
+        }
+
+        .upload-zone p {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.45);
+        }
+
+        .upload-zone span {
+            color: #818cf8;
+            font-weight: 600;
+            text-decoration: underline;
+        }
+
+        .progress-wrap {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 4px;
+            overflow: hidden;
+            display: none;
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 0;
+            background: linear-gradient(90deg, #6366f1, #38bdf8);
+            transition: width 0.1s;
+        }
+
+        .input-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+
+        .input-group label {
+            font-size: 0.78rem;
+            color: rgba(255, 255, 255, 0.4);
+            font-weight: 600;
+            display: block;
+            margin-bottom: 0.35rem;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .input-control {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 0.6rem 0.85rem;
+            color: #fff;
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .input-control:focus {
+            border-color: #6366f1;
+        }
+
+        input[type=number]::-webkit-inner-spin-button {
+            opacity: 0.4;
+        }
+
+        .btn-launch {
+            width: 100%;
+            padding: 0.9rem;
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            border: none;
+            border-radius: 12px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.6rem;
+        }
+
+        .btn-launch:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 26px rgba(99, 102, 241, 0.5);
+        }
+
+        .btn-launch:disabled {
+            background: #2b2b3d;
+            box-shadow: none;
+            color: rgba(255, 255, 255, 0.3);
+            cursor: not-allowed;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 50px;
+            padding: 0.5rem 1rem;
+            font-size: 0.82rem;
+            font-weight: 600;
+            align-self: center;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .dot-loading {
+            background: #fbbf24;
+            box-shadow: 0 0 8px #fbbf24;
+            animation: pulse 1.4s infinite;
+        }
+
+        .dot-ready {
+            background: #10b981;
+            box-shadow: 0 0 8px #10b981;
+        }
+
+        .dot-error {
+            background: #ef4444;
+            box-shadow: 0 0 8px #ef4444;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: .5;
+                transform: scale(.9)
+            }
+
+            50% {
+                opacity: 1;
+                transform: scale(1.1)
+            }
+        }
+
+
+        /* ── CINEMA VIEW ─────────────────────────────────────────── */
+        #cinemaView {
+            position: fixed;
+            inset: 0;
+            display: none;
+            background: #000;
+        }
+
+        #cinemaView.active {
+            display: block;
+        }
+
+        /* Full-bleed video */
+        #videoPlayer {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Dark vignette so overlays are readable */
+        .vignette {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.55) 100%),
+                linear-gradient(to bottom, rgba(0, 0, 0, 0.35) 0%, transparent 25%, transparent 65%, rgba(0, 0, 0, 0.65) 100%);
+        }
+
+        /* ── TOP BAR ──────────────────────────────────────────────── */
+        .top-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.4rem;
+            background: linear-gradient(to bottom, rgba(0, 0, 0, 0.7) 0%, transparent 100%);
+        }
+
+        .brand {
+            font-size: 1.1rem;
+            font-weight: 800;
+            letter-spacing: -0.3px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .brand .accent {
+            color: #76c442;
+        }
+
+        /* NVIDIA green */
+        .brand .dim {
+            opacity: 0.55;
+            font-weight: 400;
+            font-size: 0.85rem;
+        }
+
+        .top-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .ghost-btn {
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            color: rgba(255, 255, 255, 0.8);
+            padding: 0.45rem 0.85rem;
+            font-family: inherit;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            backdrop-filter: blur(6px);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .ghost-btn:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+        }
+
+        .ghost-btn.active-sim {
+            background: rgba(239, 68, 68, 0.25);
+            border-color: rgba(239, 68, 68, 0.5);
+            color: #fca5a5;
+        }
+
+        .model-badge {
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 50px;
+            padding: 0.3rem 0.85rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.55);
+            backdrop-filter: blur(6px);
+        }
+
+        /* ── TIMESTAMP / PROGRESS BAR ──────────────────────────────── */
+        .video-scrubber {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 0 1.4rem 1.2rem;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, transparent 100%);
+        }
+
+        .scrub-track {
+            width: 100%;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 3px;
+            cursor: pointer;
+            position: relative;
+            margin-bottom: 0.6rem;
+        }
+
+        .scrub-fill {
+            height: 100%;
+            background: #6366f1;
+            border-radius: 3px;
+            pointer-events: none;
+            transition: width 0.1s;
+        }
+
+        .scrub-thumb {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #fff;
+            pointer-events: none;
+            transition: left 0.1s;
+        }
+
+        .scrub-labels {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .scrub-time {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .scrub-step {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .scrub-step label {
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .scrub-step input {
+            width: 56px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 0.78rem;
+            padding: 0.25rem 0.4rem;
+            outline: none;
+            text-align: center;
+        }
+
+        /* ── REASONING CARD (top-center, like the screenshot) ────────── */
+        #reasoningCard {
+            position: absolute;
+            top: 72px;
+            left: 50%;
+            transform: translateX(-50%);
+            min-width: 300px;
+            max-width: min(560px, 90vw);
+            background: rgba(8, 8, 18, 0.78);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 14px;
+            padding: 0;
+            overflow: hidden;
+            backdrop-filter: blur(18px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            transition: opacity 0.3s ease;
+        }
+
+        #reasoningCard.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .reason-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.65rem 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .reason-header-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #10b981;
+            animation: pulse 1.4s infinite;
+        }
+
+        .reason-header-dot.idle {
+            background: rgba(255, 255, 255, 0.25);
+            animation: none;
+        }
+
+        .reason-label {
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: rgba(255, 255, 255, 0.7);
+            text-transform: uppercase;
+        }
+
+        .reason-body {
+            padding: 0.85rem 1rem;
+            min-height: 48px;
+            max-height: 160px;
+            overflow-y: auto;
+        }
+
+        .reason-body::-webkit-scrollbar {
+            width: 3px;
+        }
+
+        .reason-body::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 3px;
+        }
+
+        #cocText {
+            font-size: 0.92rem;
+            line-height: 1.55;
+            color: rgba(255, 255, 255, 0.88);
+        }
+
+        #cocText.idle-text {
+            color: rgba(255, 255, 255, 0.35);
+            font-style: italic;
+        }
+
+        .cursor-blink {
+            display: inline-block;
+            width: 2px;
+            height: 14px;
+            background: #6366f1;
+            margin-left: 2px;
+            vertical-align: middle;
+            animation: blink 0.8s infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 0
+            }
+
+            50% {
+                opacity: 1
+            }
+        }
+
+        .reason-footer {
+            display: flex;
+            gap: 0.4rem;
+            padding: 0.5rem 0.85rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .traj-pill {
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 0.25rem 0.65rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.45);
+        }
+
+        .traj-pill:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .traj-pill.on {
+            background: rgba(99, 102, 241, 0.25);
+            border-color: rgba(99, 102, 241, 0.6);
+            color: #a5b4fc;
+        }
+
+        #reasonFooter {
+            display: none;
+        }
+
+        /* ── BEV PANEL (bottom-right, like the screenshot) ──────────── */
+        #bevPanel {
+            position: absolute;
+            bottom: 80px;
+            right: 2.4rem;
+            width: 500px;
+            background: rgba(5, 8, 20, 0.82);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 14px;
+            overflow: hidden;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            transition: opacity 0.3s;
+        }
+
+        .bev-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.55rem 0.85rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .bev-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.6);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .bev-zoom {
+            display: flex;
+            gap: 4px;
+        }
+
+        .bev-zoom button {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            color: rgba(255, 255, 255, 0.6);
+            padding: 1px 6px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            line-height: 1.4;
+            transition: background 0.15s;
+        }
+
+        .bev-zoom button:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+        }
+
+        #bevCanvas {
+            display: block;
+            width: 500px;
+            height: 500px;
+            background: #06080f;
+        }
+
+        .bev-legend {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            padding: 0.45rem 0.85rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .leg-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.68rem;
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .leg-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .leg-line {
+            width: 16px;
+            height: 3px;
+            border-radius: 2px;
+            flex-shrink: 0;
+        }
+
+        /* ── INFERENCE STATUS (bottom-left) ─────────────────────────── */
+        #inferStatus {
+            position: absolute;
+            bottom: 80px;
+            left: 1.4rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .inf-chip {
+            background: rgba(5, 8, 20, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 0.45rem 0.85rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            backdrop-filter: blur(12px);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: rgba(255, 255, 255, 0.55);
+        }
+
+        .inf-chip .val {
+            color: #fff;
+            font-size: 0.85rem;
+        }
+
+        #spinnerChip {
+            display: none;
+        }
+
+        .mini-spin {
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(99, 102, 241, 0.2);
+            border-top-color: #6366f1;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ── FRAMES STRIP (horizontal, bottom-center on demand) ───────── */
+        #framesStrip {
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            gap: 6px;
+            align-items: flex-end;
+        }
+
+        #framesStrip.visible {
+            display: flex;
+        }
+
+        .frame-thumb {
+            width: 72px;
+            height: 48px;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: #0a0a18;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .frame-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .frame-ts {
+            position: absolute;
+            bottom: 2px;
+            right: 3px;
+            font-size: 0.55rem;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.7);
+            background: rgba(0, 0, 0, 0.5);
+            padding: 1px 3px;
+            border-radius: 3px;
+        }
+
+        /* ── SIDEBAR TOGGLE (right edge) ─────────────────────────────── */
+        #sidePanel {
+            position: absolute;
+            top: 50%;
+            right: 0;
+            transform: translateY(-50%);
+            width: 0;
+            overflow: hidden;
+            transition: width 0.3s ease;
+            background: rgba(6, 8, 18, 0.9);
+            border-left: 1px solid rgba(255, 255, 255, 0.08);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(12px);
+            z-index: 10;
+        }
+
+        #sidePanel.open {
+            width: 260px;
+        }
+
+        .side-toggle {
+            position: absolute;
+            top: 50%;
+            right: 0;
+            transform: translateY(-50%);
+            background: rgba(6, 8, 18, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-right: none;
+            border-radius: 8px 0 0 8px;
+            color: rgba(255, 255, 255, 0.5);
+            padding: 0.6rem 0.35rem;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 700;
+            z-index: 11;
+            backdrop-filter: blur(8px);
+            transition: all 0.2s;
+            writing-mode: vertical-rl;
+            letter-spacing: 1px;
+        }
+
+        .side-toggle:hover {
+            color: #fff;
+            background: rgba(99, 102, 241, 0.2);
+        }
+
+        .side-inner {
+            padding: 1.2rem;
+            overflow-y: auto;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .side-section h4 {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.35);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 0.6rem;
+        }
+
+        .side-input-group {
+            margin-bottom: 0.75rem;
+        }
+
+        .side-input-group label {
+            font-size: 0.72rem;
+            color: rgba(255, 255, 255, 0.4);
+            display: block;
+            margin-bottom: 0.3rem;
+        }
+
+        .side-input-group .input-control {
+            font-size: 0.82rem;
+            padding: 0.5rem 0.7rem;
+        }
+
+        .side-btn {
+            width: 100%;
+            padding: 0.65rem;
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 0.88rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .side-btn:hover:not(:disabled) {
+            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+        }
+
+        .side-btn:disabled {
+            background: #1e1e30;
+            color: rgba(255, 255, 255, 0.2);
+            cursor: not-allowed;
+        }
+
+        .side-btn.red {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+
+        .side-btn.red:hover:not(:disabled) {
+            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.4);
+        }
+
+        .side-btn.ghost-s {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .side-btn.ghost-s:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.09);
+            color: #fff;
+            box-shadow: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ══════════════════════════════════════════════════════════
+     SETUP SCREEN
+══════════════════════════════════════════════════════════ -->
+    <div id="setupScreen">
+        <div class="setup-logo">🏔 Alpamayo 1 VLA</div>
+        <div class="setup-sub">Reasoning-based Autonomous Driving · Real-time Inference Demo</div>
+
+        <div class="setup-card">
+            <div class="status-pill" id="statusPill">
+                <div class="dot dot-loading" id="statusDot"></div>
+                <span id="statusText">Connecting to model…</span>
+            </div>
+
+            <!-- Drag & drop upload -->
+            <div class="upload-zone" id="uploadZone" onclick="document.getElementById('videoInput').click()">
+                <svg fill="none" stroke-width="1.8" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                <p>Drop driving video here or <span>browse</span></p>
+                <p style="font-size:0.78rem">MP4 · MOV · AVI · MKV — max 500 MB</p>
+                <div class="progress-wrap" id="progressWrap">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <input id="videoInput" type="file" accept=".mp4,.mov,.avi,.mkv" style="display:none"
+                    onchange="handleFile(event)">
+            </div>
+
+            <!-- Settings row -->
+            <div class="input-row">
+                <div class="input-group">
+                    <label>Ego speed (m/s)</label>
+                    <input id="egoSpeed" class="input-control" type="number" value="10" min="0" max="50" step="1">
+                </div>
+                <div class="input-group">
+                    <label>Step size (s)</label>
+                    <input id="stepSize" class="input-control" type="number" value="1.0" min="0.1" max="5" step="0.1">
+                </div>
+            </div>
+
+            <button id="btnLaunch" class="btn-launch" disabled onclick="launchCinema()">
+                <svg style="width:18px;height:18px;fill:currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                </svg>
+                Launch Cinema View
+            </button>
+        </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════
+     CINEMA VIEW
+══════════════════════════════════════════════════════════ -->
+    <div id="cinemaView">
+
+        <!-- Full-bleed video -->
+        <video id="videoPlayer" playsinline muted controls></video>
+        <div class="vignette"></div>
+
+        <!-- Top bar -->
+        <div class="top-bar">
+            <div class="brand">
+                <span class="accent">NVIDIA</span> Alpamayo
+                <span class="dim">/ Live Inference</span>
+            </div>
+            <div class="top-controls">
+                <span class="model-badge" id="tsDisplay">t = 0.00 s</span>
+                <button class="ghost-btn" id="btnFrames" onclick="toggleFrames()">
+                    <svg style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2"
+                        viewBox="0 0 24 24">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <path d="M21 15l-5-5L5 21" />
+                    </svg>
+                    Frames
+                </button>
+                <button class="ghost-btn" id="btnSimToggle" onclick="toggleSim()">▶ Play Sim</button>
+                <button class="ghost-btn" onclick="backToSetup()">↩ Settings</button>
+            </div>
+        </div>
+
+        <!-- Reasoning card (center-top) -->
+        <div id="reasoningCard" class="hidden">
+            <div class="reason-header">
+                <div class="reason-header-dot idle" id="reasonDot"></div>
+                <span class="reason-label">Reasoning</span>
+            </div>
+            <div class="reason-body">
+                <span id="cocText" class="idle-text">Run inference to generate reasoning trace…</span>
+                <span id="cocCursor" class="cursor-blink" style="display:none"></span>
+            </div>
+            <div id="reasonFooter" class="reason-footer">
+                <button class="traj-pill on" id="tp0" onclick="selTraj(0)">Path 1</button>
+                <button class="traj-pill" id="tp1" onclick="selTraj(1)">Path 2</button>
+                <button class="traj-pill" id="tp2" onclick="selTraj(2)">Path 3</button>
+            </div>
+        </div>
+
+        <!-- BEV panel (bottom-right) -->
+        <div id="bevPanel">
+            <div class="bev-header">
+                <span class="bev-title">Trajectory Prediction</span>
+                <div class="bev-zoom">
+                    <button onclick="bev.zoom(1.25)">+</button>
+                    <button onclick="bev.zoom(0.8)">−</button>
+                    <button onclick="bev.reset()">⟳</button>
+                </div>
+            </div>
+            <canvas id="bevCanvas" width="500" height="500"></canvas>
+            <div class="bev-legend">
+                <div class="leg-item">
+                    <div class="leg-dot" style="background:#f97316"></div>History
+                </div>
+                <div class="leg-item">
+                    <div class="leg-line" style="background:#6366f1"></div>Prediction
+                </div>
+                <div class="leg-item">
+                    <div class="leg-dot" style="background:#3b82f6"></div>Ego
+                </div>
+                <div class="leg-item" id="gtLegend" style="display:none">
+                    <div class="leg-line" style="background:#10b981;border-top:2px dashed #10b981"></div>GT
+                </div>
+            </div>
+        </div>
+
+        <!-- Inference status chips (bottom-left) -->
+        <div id="inferStatus">
+            <div class="inf-chip" id="tsChip">⏱ <span id="tsChipVal" class="val">—</span></div>
+            <div class="inf-chip" id="latChip">🔥 <span id="latChipVal" class="val">—</span></div>
+            <div class="inf-chip" id="spinnerChip">
+                <div class="mini-spin"></div> Inferring…
+            </div>
+        </div>
+
+        <!-- Extracted frames strip (bottom-center, hidden by default) -->
+        <div id="framesStrip">
+            <div class="frame-thumb" id="ft0"><img id="fi0">
+                <div class="frame-ts">t−0.3</div>
+            </div>
+            <div class="frame-thumb" id="ft1"><img id="fi1">
+                <div class="frame-ts">t−0.2</div>
+            </div>
+            <div class="frame-thumb" id="ft2"><img id="fi2">
+                <div class="frame-ts">t−0.1</div>
+            </div>
+            <div class="frame-thumb" id="ft3"><img id="fi3">
+                <div class="frame-ts">t₀</div>
+            </div>
+        </div>
+
+        <!-- Video scrubber bar -->
+        <div class="video-scrubber">
+            <div class="scrub-track" id="scrubTrack" onclick="seekVideo(event)">
+                <div class="scrub-fill" id="scrubFill" style="width:0%"></div>
+                <div class="scrub-thumb" id="scrubThumb" style="left:0%"></div>
+            </div>
+            <div class="scrub-labels">
+                <span class="scrub-time" id="scrubCurrent">0:00</span>
+                <div class="scrub-step">
+                    <label>Step</label>
+                    <input id="stepDisplay" type="number" value="1.0" min="0.1" max="5" step="0.1"
+                        oninput="document.getElementById('stepSize').value=this.value">
+                    <label>s</label>
+                </div>
+                <span class="scrub-time" id="scrubDuration">0:00</span>
+            </div>
+        </div>
+
+        <!-- Side settings panel -->
+        <div id="sidePanel">
+            <div class="side-inner">
+                <div class="side-section">
+                    <h4>Inference</h4>
+                    <div class="side-input-group">
+                        <label>Ego speed (m/s)</label>
+                        <input id="sideSpeed" class="input-control" type="number" value="10" min="0" max="50" step="1">
+                    </div>
+                    <div class="side-input-group">
+                        <label>Step size (s)</label>
+                        <input id="sideStep" class="input-control" type="number" value="1.0" min="0.1" max="5"
+                            step="0.1">
+                    </div>
+                    <button id="sideBtnRun" class="side-btn" disabled onclick="runInference()">
+                        <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z" />
+                        </svg>
+                        Run at current frame
+                    </button>
+                    <button id="sideBtnSim" class="side-btn red" disabled onclick="toggleSim()">▶ Play
+                        Simulation</button>
+                    <button class="side-btn ghost-s" onclick="stepSim()">Step forward</button>
+                </div>
+                <div class="side-section">
+                    <h4>Upload new video</h4>
+                    <button class="side-btn ghost-s" onclick="backToSetup()">↩ Back to setup</button>
+                </div>
+            </div>
+        </div>
+        <div class="side-toggle" id="sideToggle" onclick="toggleSidePanel()">SETTINGS</div>
+
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════════════
+     LOADING OVERLAY
+══════════════════════════════════════════════════════════ -->
+    <div id="loadOverlay" style="
+    position:fixed;inset:0;background:rgba(0,0,0,0.75);
+    backdrop-filter:blur(8px);z-index:500;
+    display:none;align-items:center;justify-content:center;flex-direction:column;gap:1.2rem;
+">
+        <div
+            style="width:48px;height:48px;border:3px solid rgba(99,102,241,0.15);border-top-color:#6366f1;border-radius:50%;animation:spin 0.9s linear infinite">
+        </div>
+        <div style="text-align:center">
+            <div id="loadTitle" style="font-size:1.1rem;font-weight:700;margin-bottom:0.3rem">Extracting frames…</div>
+            <div id="loadSub" style="font-size:0.85rem;color:rgba(255,255,255,0.4)">Running VLA inference…</div>
+        </div>
+    </div>
+
+
+    <script>
+        /* ─────────────────────────────────────────────────────────────────
+           STATE
+        ───────────────────────────────────────────────────────────────── */
+        let uploadedFilename = null;
+        let modelStatus = 'loading';
+        let inferenceData = null;
+        let activeTrajIndex = 0;
+        let simInterval = null;
+        let framesVisible = false;
+        let sidePanelOpen = false;
+        let currentTs = 1.0;
+        let typingTO = null;
+        let simRunning = false;
+        let inferLockedTs = null;  // timestamp locked while inference is in flight
+
+        /* ─────────────────────────────────────────────────────────────────
+           BEV CANVAS
+        ───────────────────────────────────────────────────────────────── */
+        const bev = (() => {
+            const canvas = document.getElementById('bevCanvas');
+            const ctx = canvas.getContext('2d');
+            let scale = 3.8;
+            const BASE = 3.8;
+
+            function draw() {
+                const W = canvas.width;
+                const H = canvas.height;
+                const cx = W / 2;
+                const cy = H * 0.78;
+
+                ctx.clearRect(0, 0, W, H);
+                ctx.fillStyle = '#06080f';
+                ctx.fillRect(0, 0, W, H);
+
+                // Grid circles
+                [10, 20, 30, 40].forEach(d => {
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, d * scale, 0, 2 * Math.PI);
+                    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+                    ctx.lineWidth = 0.8;
+                    ctx.stroke();
+                    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                    ctx.font = '8px monospace';
+                    ctx.fillText(`${d}m`, cx + 4, cy - d * scale + 8);
+                });
+
+                // Axes
+                ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+                ctx.lineWidth = 0.8;
+                ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(W, cy); ctx.stroke();
+
+                if (!inferenceData) {
+                    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+                    ctx.font = '10px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('No data yet', cx, cy - 10);
+                    ctx.textAlign = 'left';
+                    drawEgo(cx, cy);
+                    return;
+                }
+
+                // GT
+                if (inferenceData.gt_trajectory) {
+                    document.getElementById('gtLegend').style.display = 'flex';
+                    ctx.strokeStyle = '#10b981';
+                    ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
+                    ctx.beginPath(); ctx.moveTo(cx, cy);
+                    inferenceData.gt_trajectory.forEach(pt => {
+                        ctx.lineTo(cx - pt[1] * scale, cy - pt[0] * scale);
+                    });
+                    ctx.stroke(); ctx.setLineDash([]);
+                }
+
+                // History dots
+                if (inferenceData.history_waypoints) {
+                    inferenceData.history_waypoints.forEach(pt => {
+                        ctx.beginPath();
+                        ctx.arc(cx - pt[1] * scale, cy - pt[0] * scale, 2.5, 0, 2 * Math.PI);
+                        ctx.fillStyle = '#f97316';
+                        ctx.fill();
+                    });
+                }
+
+                // Trajectories
+                if (inferenceData.trajectories) {
+                    inferenceData.trajectories.forEach((traj, idx) => {
+                        if (idx === activeTrajIndex) return;
+                        ctx.strokeStyle = 'rgba(99,102,241,0.2)';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath(); ctx.moveTo(cx, cy);
+                        traj.forEach(pt => ctx.lineTo(cx - pt[1] * scale, cy - pt[0] * scale));
+                        ctx.stroke();
+                    });
+
+                    // Active trajectory (glow)
+                    const traj = inferenceData.trajectories[activeTrajIndex] || inferenceData.trajectories[0];
+                    ctx.shadowBlur = 8; ctx.shadowColor = '#818cf8';
+                    ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 3;
+                    ctx.beginPath(); ctx.moveTo(cx, cy);
+                    traj.forEach(pt => ctx.lineTo(cx - pt[1] * scale, cy - pt[0] * scale));
+                    ctx.stroke(); ctx.shadowBlur = 0;
+
+                    // Arrow at end
+                    if (traj.length > 1) {
+                        const a = traj[traj.length - 1], b = traj[traj.length - 2];
+                        const ax = cx - a[1] * scale, ay = cy - a[0] * scale;
+                        const bx = cx - b[1] * scale, by = cy - b[0] * scale;
+                        const ang = Math.atan2(ay - by, ax - bx);
+                        ctx.fillStyle = '#6366f1';
+                        ctx.beginPath();
+                        ctx.moveTo(ax, ay);
+                        ctx.lineTo(ax - 9 * Math.cos(ang - Math.PI / 5), ay - 9 * Math.sin(ang - Math.PI / 5));
+                        ctx.lineTo(ax - 9 * Math.cos(ang + Math.PI / 5), ay - 9 * Math.sin(ang + Math.PI / 5));
+                        ctx.fill();
+                    }
+                }
+
+                drawEgo(cx, cy);
+            }
+
+            function drawEgo(cx, cy) {
+                const w = 2.0 * scale, h = 4.0 * scale;
+                ctx.fillStyle = '#3b82f6';
+                ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.roundRect(cx - w / 2, cy - h / 2, w, h, 3);
+                ctx.fill(); ctx.stroke();
+            }
+
+            return {
+                draw,
+                zoom: f => { scale = Math.max(1.5, Math.min(scale * f, 20)); draw(); },
+                reset: () => { scale = BASE; draw(); }
+            };
+        })();
+
+        bev.draw();
+
+
+        /* ─────────────────────────────────────────────────────────────────
+           STATUS POLLING
+        ───────────────────────────────────────────────────────────────── */
+        function checkStatus() {
+            fetch('/api/status')
+                .then(r => r.json())
+                .then(d => {
+                    modelStatus = d.status;
+                    const dot = document.getElementById('statusDot');
+                    const text = document.getElementById('statusText');
+                    dot.className = 'dot';
+                    if (d.status === 'ready') {
+                        dot.classList.add('dot-ready');
+                        text.innerText = 'Model ready ✓';
+                        updateLaunchBtn();
+                    } else if (d.status === 'loading') {
+                        dot.classList.add('dot-loading');
+                        text.innerText = 'Loading 10B model…';
+                        setTimeout(checkStatus, 3000);
+                    } else {
+                        dot.classList.add('dot-error');
+                        text.innerText = 'Error loading weights';
+                    }
+                })
+                .catch(() => setTimeout(checkStatus, 5000));
+        }
+        checkStatus();
+
+        function updateLaunchBtn() {
+            document.getElementById('btnLaunch').disabled = !(uploadedFilename && modelStatus === 'ready');
+            document.getElementById('sideBtnRun').disabled = !(uploadedFilename && modelStatus === 'ready');
+            document.getElementById('sideBtnSim').disabled = !(uploadedFilename && modelStatus === 'ready');
+        }
+
+
+        /* ─────────────────────────────────────────────────────────────────
+           UPLOAD
+        ───────────────────────────────────────────────────────────────── */
+        const uploadZone = document.getElementById('uploadZone');
+        ['dragenter', 'dragover'].forEach(e => uploadZone.addEventListener(e, ev => {
+            ev.preventDefault(); uploadZone.classList.add('dragover');
+        }));
+        ['dragleave', 'drop'].forEach(e => uploadZone.addEventListener(e, ev => {
+            ev.preventDefault(); uploadZone.classList.remove('dragover');
+        }));
+        uploadZone.addEventListener('drop', e => {
+            if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+        });
+
+        function handleFile(e) {
+            if (e.target.files.length) uploadFile(e.target.files[0]);
+        }
+
+        function uploadFile(file) {
+            const fd = new FormData();
+            fd.append('video', file);
+            const wrap = document.getElementById('progressWrap');
+            const fill = document.getElementById('progressFill');
+            wrap.style.display = 'block';
+            fill.style.width = '0%';
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/upload', true);
+            xhr.upload.onprogress = e => {
+                if (e.lengthComputable) fill.style.width = (e.loaded / e.total * 100) + '%';
+            };
+            xhr.onload = () => {
+                if (xhr.status === 200) {
+                    const res = JSON.parse(xhr.responseText);
+                    uploadedFilename = res.filename;
+
+                    // Wire video in cinema view
+                    const vp = document.getElementById('videoPlayer');
+                    vp.src = res.url;
+                    vp.load();
+                    vp.onloadedmetadata = () => {
+                        currentTs = 1.0;
+                        document.getElementById('scrubDuration').innerText = fmtTime(vp.duration);
+                        syncVideoToTs(currentTs);
+                    };
+                    vp.addEventListener('timeupdate', onTimeUpdate);
+                    vp.addEventListener('play', onVideoPlay);
+
+                    updateLaunchBtn();
+                    setTimeout(() => wrap.style.display = 'none', 800);
+                } else {
+                    alert('Upload failed: ' + JSON.parse(xhr.responseText).error);
+                    wrap.style.display = 'none';
+                }
+            };
+            xhr.onerror = () => { alert('Network error during upload'); wrap.style.display = 'none'; };
+            xhr.send(fd);
+        }
+
+
+        /* ─────────────────────────────────────────────────────────────────
+           CINEMA TRANSITIONS
+        ───────────────────────────────────────────────────────────────── */
+        function launchCinema() {
+            document.getElementById('sideSpeed').value = document.getElementById('egoSpeed').value;
+            document.getElementById('sideStep').value = document.getElementById('stepSize').value;
+            document.getElementById('stepDisplay').value = document.getElementById('stepSize').value;
+
+            document.getElementById('setupScreen').classList.add('hidden');
+            document.getElementById('cinemaView').classList.add('active');
+            document.getElementById('reasoningCard').classList.remove('hidden');
+            setTimeout(() => document.getElementById('setupScreen').style.display = 'none', 500);
+
+            // Start paused so sim/inference stay frame-locked
+            const vp = document.getElementById('videoPlayer');
+            if (vp.src) {
+                currentTs = vp.currentTime || currentTs;
+                syncVideoToTs(currentTs);
+            }
+        }
+
+        function backToSetup() {
+            stopSim();
+            const vp = document.getElementById('videoPlayer');
+            vp.pause();
+            document.getElementById('setupScreen').style.display = 'flex';
+            setTimeout(() => document.getElementById('setupScreen').classList.remove('hidden'), 10);
+            document.getElementById('cinemaView').classList.remove('active');
+        }
+
+
+        /* ─────────────────────────────────────────────────────────────────
+           VIDEO SCRUBBER
+        ───────────────────────────────────────────────────────────────── */
+        function syncVideoToTs(ts) {
+            const vp = document.getElementById('videoPlayer');
+            vp.pause();
+            vp.currentTime = ts;
+            updateTimeDisplays(ts);
+            updateScrubber();
+        }
+
+        function updateTimeDisplays(ts) {
+            document.getElementById('tsDisplay').innerText = `t = ${ts.toFixed(2)} s`;
+            document.getElementById('scrubCurrent').innerText = fmtTime(ts);
+            document.getElementById('tsChipVal').innerText = ts.toFixed(2) + ' s';
+        }
+
+        function onVideoPlay() {
+            // Block free playback while sim is stepping or inference is running
+            if (simRunning || inferLockedTs !== null) {
+                const vp = document.getElementById('videoPlayer');
+                vp.pause();
+                syncVideoToTs(inferLockedTs ?? currentTs);
+            }
+        }
+
+        function onTimeUpdate() {
+            const vp = document.getElementById('videoPlayer');
+            if (!simRunning && inferLockedTs === null) {
+                currentTs = vp.currentTime;
+            }
+            const ts = (simRunning || inferLockedTs !== null) ? (inferLockedTs ?? currentTs) : vp.currentTime;
+            if ((simRunning || inferLockedTs !== null) && Math.abs(vp.currentTime - ts) > 0.05) {
+                vp.pause();
+                vp.currentTime = ts;
+            }
+            updateTimeDisplays(ts);
+            updateScrubber();
+        }
+
+        function updateScrubber() {
+            const vp = document.getElementById('videoPlayer');
+            const pct = vp.duration ? (vp.currentTime / vp.duration * 100) : 0;
+            document.getElementById('scrubFill').style.width = pct + '%';
+            document.getElementById('scrubThumb').style.left = pct + '%';
+        }
+
+        function seekVideo(e) {
+            if (simRunning) return;
+            const vp = document.getElementById('videoPlayer');
+            const trk = document.getElementById('scrubTrack');
+            const rect = trk.getBoundingClientRect();
+            const pct = Math.max(0, Math.min((e.clientX - rect.left) / rect.width, 1));
+            currentTs = pct * vp.duration;
+            syncVideoToTs(currentTs);
+        }
+
+        function fmtTime(s) {
+            const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+            return `${m}:${sec.toString().padStart(2, '0')}`;
+        }
+
+
+        /* ─────────────────────────────────────────────────────────────────
+           INFERENCE
+        ───────────────────────────────────────────────────────────────── */
+        function getSettings() {
+            const speed = parseFloat(document.getElementById('sideSpeed').value) || 10;
+            const step = parseFloat(document.getElementById('sideStep').value) || 1.0;
+            const ts = currentTs;
+            return { speed, step, ts };
+        }
+
+        function runInference(isSim = false) {
+            if (!uploadedFilename) { alert('Upload a video first'); return Promise.reject(); }
+            if (modelStatus !== 'ready') { alert('Model still loading'); return Promise.reject(); }
+
+            if (!isSim) {
+                const vp = document.getElementById('videoPlayer');
+                currentTs = vp.currentTime || currentTs;
+            }
+
+            const { speed, ts } = getSettings();
+            currentTs = ts;
+            inferLockedTs = ts;
+            syncVideoToTs(ts);
+
+            // Show spinner chip
+            document.getElementById('spinnerChip').style.display = 'flex';
+            document.getElementById('reasonDot').classList.remove('idle');
+
+            // Show overlay only for manual runs
+            const overlay = document.getElementById('loadOverlay');
+            if (!isSim) {
+                overlay.style.display = 'flex';
+                document.getElementById('loadTitle').innerText = 'Extracting frames…';
+                document.getElementById('loadSub').innerText = 'Running VLA inference…';
+            }
+
+            const t0 = Date.now();
+
+            return fetch('/api/process_uploaded', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: uploadedFilename, timestamp: ts, speed })
+            })
+                .then(r => {
+                    if (r.status === 503) {
+                        return r.json().then(d => {
+                            if (d.retry) {
+                                // GPU busy — silent skip for sim, alert for manual
+                                document.getElementById('spinnerChip').style.display = 'none';
+                                if (!isSim) overlay.style.display = 'none';
+                                document.getElementById('reasonDot').classList.add('idle');
+                                inferLockedTs = null;
+                                syncVideoToTs(currentTs);
+                                if (!isSim) alert('GPU busy with another request, please wait.');
+                                throw new Error('busy');
+                            }
+                            throw new Error(d.error || 'Server error');
+                        });
+                    }
+                    return r.ok ? r.json() : r.json().then(d => { throw new Error(d.error || 'Server error'); });
+                })
+                .then(data => {
+                    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+                    document.getElementById('latChipVal').innerText = elapsed + ' s';
+                    document.getElementById('spinnerChip').style.display = 'none';
+                    if (!isSim) overlay.style.display = 'none';
+                    inferLockedTs = null;
+                    syncVideoToTs(currentTs);
+
+                    inferenceData = data;
+                    activeTrajIndex = 0;
+
+                    // Show/hide GT legend
+                    document.getElementById('gtLegend').style.display = data.gt_trajectory ? 'flex' : 'none';
+
+                    // Trajectory selectors visibility
+                    const footer = document.getElementById('reasonFooter');
+                    footer.style.display = (data.trajectories && data.trajectories.length > 1) ? 'flex' : 'none';
+
+                    // Typewrite the first CoT
+                    if (data.cots && data.cots.length > 0) typeText(data.cots[0]);
+
+                    // Update frame thumbnails
+                    if (data.images) {
+                        data.images.forEach((b64, i) => {
+                            const img = document.getElementById(`fi${i}`);
+                            img.src = `data:image/jpeg;base64,${b64}`;
+                        });
+                    }
+
+                    bev.draw();
+                })
+                .catch(err => {
+                    document.getElementById('spinnerChip').style.display = 'none';
+                    overlay.style.display = 'none';
+                    document.getElementById('reasonDot').classList.add('idle');
+                    inferLockedTs = null;
+                    syncVideoToTs(currentTs);
+                    if (!isSim) alert('Inference failed: ' + err.message);
+                    throw err;
+                });
+        }
+
+        function selTraj(idx) {
+            activeTrajIndex = idx;
+            ['tp0', 'tp1', 'tp2'].forEach((id, i) => {
+                document.getElementById(id).classList.toggle('on', i === idx);
+            });
+            if (inferenceData && inferenceData.cots && inferenceData.cots[idx]) typeText(inferenceData.cots[idx]);
+            bev.draw();
+        }
+
+
+        /* ─────────────────────────────────────────────────────────────────
+           TYPEWRITER
+        ───────────────────────────────────────────────────────────────── */
+        function typeText(raw) {
+            const text = raw.replace(/<\|[a-z_]+\|>/g, '').trim();
+            const el = document.getElementById('cocText');
+            const cursor = document.getElementById('cocCursor');
+
+            el.className = '';
+            el.innerText = '';
+            cursor.style.display = 'inline-block';
+            if (typingTO) clearTimeout(typingTO);
+
+            let i = 0;
+            (function step() {
+                if (i < text.length) {
+                    el.innerText += text[i++];
+                    typingTO = setTimeout(step, 12);
+                } else {
+                    cursor.style.display = 'none';
+                    document.getElementById('reasonDot').classList.add('idle');
+                }
+            })();
+        }
+
+
+        /* ─────────────────────────────────────────────────────────────────
+           SIMULATION (realtime stepping)
+           FIX: async sequential loop — waits for inference to finish before
+           stepping. Checks /api/busy to skip if GPU is already occupied.
+           Replaces the broken setInterval that caused concurrent GPU requests.
+        ───────────────────────────────────────────────────────────────── */
+        function toggleSim() {
+            simRunning ? stopSim() : startSim();
+        }
+
+        function startSim() {
+            if (!uploadedFilename) { alert('Upload a video first'); return; }
+            const vp = document.getElementById('videoPlayer');
+            currentTs = vp.currentTime || currentTs;
+            syncVideoToTs(currentTs);
+            simRunning = true;
+            document.getElementById('btnSimToggle').classList.add('active-sim');
+            document.getElementById('btnSimToggle').innerText = '⏸ Stop Sim';
+            document.getElementById('sideBtnSim').innerText = '⏸ Stop Simulation';
+            simLoop();
+        }
+
+        async function simLoop() {
+            while (simRunning) {
+                const vp = document.getElementById('videoPlayer');
+                const step = parseFloat(document.getElementById('sideStep').value) || 1.0;
+                const nextTs = currentTs + step;
+
+                if (vp.duration && nextTs > vp.duration) { stopSim(); return; }
+
+                // Check if GPU is already busy before stepping
+                try {
+                    const busyRes = await fetch('/api/busy');
+                    const busyData = await busyRes.json();
+                    if (busyData.busy) {
+                        // GPU occupied — wait 500ms and retry without advancing timestamp
+                        await new Promise(r => setTimeout(r, 500));
+                        continue;
+                    }
+                } catch(e) { /* network hiccup, keep going */ }
+
+                currentTs = nextTs;
+                syncVideoToTs(currentTs);
+
+                // Await inference — sim only advances after result arrives
+                try {
+                    await runInference(true);
+                } catch(e) {
+                    if (e.message !== 'busy') {
+                        stopSim();
+                        return;
+                    }
+                    continue;
+                }
+
+                // Brief hold so the matched frame + overlays are readable
+                await new Promise(r => setTimeout(r, 300));
+            }
+        }
+
+        function stopSim() {
+            simRunning = false;
+            simInterval = null;
+            document.getElementById('btnSimToggle').classList.remove('active-sim');
+            document.getElementById('btnSimToggle').innerText = '▶ Play Sim';
+            document.getElementById('sideBtnSim').innerText = '▶ Play Simulation';
+        }
+
+        async function stepSim() {
+            const vp = document.getElementById('videoPlayer');
+            const step = parseFloat(document.getElementById('sideStep').value) || 1.0;
+            const nextTs = currentTs + step;
+            if (vp.duration && nextTs > vp.duration) return;
+            currentTs = nextTs;
+            syncVideoToTs(currentTs);
+            await runInference(true).catch(() => {});
+        }
+
+
+        /* ─────────────────────────────────────────────────────────────────
+           UI TOGGLES
+        ───────────────────────────────────────────────────────────────── */
+        function toggleFrames() {
+            framesVisible = !framesVisible;
+            document.getElementById('framesStrip').classList.toggle('visible', framesVisible);
+            document.getElementById('btnFrames').style.background = framesVisible
+                ? 'rgba(99,102,241,0.25)' : '';
+        }
+
+        function toggleSidePanel() {
+            sidePanelOpen = !sidePanelOpen;
+            document.getElementById('sidePanel').classList.toggle('open', sidePanelOpen);
+        }
+
+        // Sync step inputs cross-panel
+        document.getElementById('stepDisplay').addEventListener('input', e => {
+            document.getElementById('sideStep').value = e.target.value;
+            document.getElementById('stepSize').value = e.target.value;
+        });
+        document.getElementById('sideStep').addEventListener('input', e => {
+            document.getElementById('stepDisplay').value = e.target.value;
+            document.getElementById('stepSize').value = e.target.value;
+        });
+        document.getElementById('sideSpeed').addEventListener('input', e => {
+            document.getElementById('egoSpeed').value = e.target.value;
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', e => {
+            if (document.getElementById('cinemaView').classList.contains('active')) {
+                if (e.key === ' ') { e.preventDefault(); toggleSim(); }
+                if (e.key === 'ArrowRight') stepSim();
+                if (e.key === 'f' || e.key === 'F') toggleFrames();
+                if (e.key === 's' || e.key === 'S') toggleSidePanel();
+                if (e.key === 'Escape') { stopSim(); backToSetup(); }
+            }
+        });
+    </script>
+</body>
+
+</html>
