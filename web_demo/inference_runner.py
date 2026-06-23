@@ -47,7 +47,7 @@ def get_model_and_processor():
     t0 = time.time()
 
     _model = AlpamayoR1.from_pretrained(
-        "/home/acf-thor/SHIVAM/alpamayo/alpamayo_fp8_v3",
+        "nvidia/Alpamayo-R1-10B",
         dtype=torch.bfloat16,
     ).to("cuda")
     _model.eval()
@@ -90,7 +90,7 @@ def run_youtube_inference(
     image_frames,
     ego_history_speed: float = 10.0,
     num_traj_samples: int = 1,
-    max_generation_length: int = 64,
+    max_generation_length: int = 128,
 ):
     model, processor = get_model_and_processor()
 

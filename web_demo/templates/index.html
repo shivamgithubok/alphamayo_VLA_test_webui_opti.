@@ -1023,15 +1023,6 @@
         <!-- Extracted frames strip (bottom-center, hidden by default) -->
         <div id="framesStrip">
             <div class="frame-thumb" id="ft0"><img id="fi0">
-                <div class="frame-ts">t−0.3</div>
-            </div>
-            <div class="frame-thumb" id="ft1"><img id="fi1">
-                <div class="frame-ts">t−0.2</div>
-            </div>
-            <div class="frame-thumb" id="ft2"><img id="fi2">
-                <div class="frame-ts">t−0.1</div>
-            </div>
-            <div class="frame-thumb" id="ft3"><img id="fi3">
                 <div class="frame-ts">t₀</div>
             </div>
         </div>
@@ -1524,7 +1515,9 @@
                     if (data.images) {
                         data.images.forEach((b64, i) => {
                             const img = document.getElementById(`fi${i}`);
-                            img.src = `data:image/jpeg;base64,${b64}`;
+                            if (img) {
+                                img.src = `data:image/jpeg;base64,${b64}`;
+                            }
                         });
                     }
 

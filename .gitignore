@@ -8,6 +8,10 @@ ar1_venv/
 *.so
 *.pt
 *json
+*.onnx
+*.engine
+web_demo/old/
+
 # LICENSE
 # Distribution / packaging
 .Python
